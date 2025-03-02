@@ -1,0 +1,16 @@
+{
+    "name": "danupe/plugin-database",
+    "description": "The Database Plugin",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "Danupe\\Plugin\\Database\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.0",
+        "danupe/core": "dev-main"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
