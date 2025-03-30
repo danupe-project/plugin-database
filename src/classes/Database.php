@@ -60,18 +60,18 @@ class Database
         return $this;
     }
 
-    public function all(): array
+    public function all(array $fields=[]): array
     {
-        $sql = $this->buildQuery();
+        $sql = $this->buildQuery($fields);
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($this->queryConditions);
 
         return $stmt->fetchAll();
     }
 
-    public function first(): ?array
+    public function first(array $fields=[]): ?array
     {
-        $sql = $this->buildQuery() . " LIMIT 1";
+        $sql = $this->buildQuery($fields) . " LIMIT 1";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($this->queryConditions);
 
@@ -108,9 +108,13 @@ class Database
         return $stmt->fetchAll();
     }
 
-    private function buildQuery(): string
+    private function buildQuery(array $fields=[]): string
     {
-        $sql = "SELECT * FROM {$this->table}";
+        if(empty($fields)) {
+            $fields = ['*'];
+        }
+        $fields = implode(", ", $fields);
+        $sql = "SELECT $fields FROM {$this->table}";
 
         if ($this->queryConditions) {
             $sql .= " WHERE " . implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
@@ -245,4 +249,10 @@ class Database
 
         return (int)$stmt->fetchColumn();
     }
+
+    public function getLastInsertId(): int
+    {
+        return (int)$this->pdo->lastInsertId();
+    }
+
 }
