@@ -54,11 +54,12 @@ abstract class Model
         }
     }
 
-    public function delete()
+    public function delete(int $id)
     {
-        //muss getestet werden
-        if (isset($this->attributes[$this->primaryKey])) {
-            $this->database->delete($this->attributes[$this->primaryKey]);
+        if (isset($id)) {
+            $this->database->delete([$this->primaryKey => $id]);
+        } else {
+            throw new \Exception("Record not found");
         }
     }
 
@@ -101,5 +102,11 @@ abstract class Model
     public function getAll()
     {
         return $this->database->all();
+    }
+
+    public function orderBy(array $orderBy = [])
+    {
+        $this->database->orderBy($orderBy);
+        return $this;
     }
 }
