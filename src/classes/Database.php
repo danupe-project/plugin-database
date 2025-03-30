@@ -232,4 +232,17 @@ class Database
 
         return $sql;
     }
+
+    public function count(): int
+    {
+        $sql = "SELECT COUNT(*) FROM {$this->table}";
+        if ($this->queryConditions) {
+            $sql .= " WHERE " . implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->queryConditions);
+
+        return (int)$stmt->fetchColumn();
+    }
 }
