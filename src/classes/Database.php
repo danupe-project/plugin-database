@@ -159,9 +159,9 @@ class Database
 
     public function update(array $data, array $conditions): bool
     {
-        $set = implode(", ", array_map(fn($key) => "$key = :$key", array_keys($data)));
-        $where = implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($conditions)));
-        $sql = "UPDATE {$this->table} SET $set WHERE $where";
+        $set = implode(", ", array_map(fn($key) => "`$key` = :$key", array_keys($data)));
+        $where = implode(" AND ", array_map(fn($key) => "`$key` = :$key", array_keys($conditions)));
+        $sql = "UPDATE `{$this->table}` SET $set WHERE $where";
 
         $stmt = $this->pdo->prepare($sql);
         $params = array_merge($data, $conditions);
@@ -228,7 +228,7 @@ class Database
 
     public function insert(array $data): bool
     {
-        $columns = implode(", ", array_keys($data));
+        $columns = implode(", ", array_map(fn($column) => "`$column`", array_keys($data)));
         $placeholders = implode(", ", array_map(fn($key) => ":$key", array_keys($data)));
         $sql = "INSERT INTO {$this->table} ($columns) VALUES ($placeholders)";
         
