@@ -73,22 +73,9 @@ abstract class Model
         }
     }
 
-    public function all($output = '', $field = 'name', $key = 'id')
+    public function all(array $fields = [])
     {
-        $data = $this->database->all();
-
-        if ($output == 'json') {
-            $data = json_encode($data);
-        }
-
-        if ($output == 'select') {
-            $options = [];
-            foreach ($data as $o) {
-                $options[danupe()->data()->get($o, $key)] = danupe()->data()->get($o, $field);
-            }
-            $data = $options;
-        }
-
+        $data = $this->database->all($fields);
         return $data;
     }
 
