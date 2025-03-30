@@ -12,6 +12,7 @@ class Database
     private array $queryConditions = [];
     private ?int $limit = null;
     private ?int $offset = null;
+    private array $orderByConditions = [];
 
     public function __construct(string $table = '')
     {
@@ -57,6 +58,18 @@ class Database
     public function offset(int $offset): static
     {
         $this->offset = $offset;
+        return $this;
+    }
+
+    public function orderBy(array $conditions): static
+    {
+        foreach ($conditions as $column => $direction) {
+            $direction = strtoupper($direction);
+            if (!in_array($direction, ['ASC', 'DESC'])) {
+                throw new \InvalidArgumentException("Invalid sort direction for column '$column'. Use 'ASC' or 'DESC'.");
+            }
+            $this->orderByConditions[] = "$column $direction";
+        }
         return $this;
     }
 
@@ -118,6 +131,10 @@ class Database
 
         if ($this->queryConditions) {
             $sql .= " WHERE " . implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
+        }
+
+        if ($this->orderByConditions) {
+            $sql .= " ORDER BY " . implode(", ", $this->orderByConditions);
         }
 
         return $sql;
@@ -254,5 +271,7 @@ class Database
     {
         return (int)$this->pdo->lastInsertId();
     }
+
+
 
 }
