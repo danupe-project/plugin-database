@@ -273,5 +273,15 @@ class Database
     }
 
 
+    public function dropAllTables(): void
+    {
+        $sql = "SHOW TABLES";
+        $stmt = $this->pdo->query($sql);
+        $tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        foreach ($tables as $table) {
+            $this->pdo->exec("DROP TABLE IF EXISTS `$table`");
+        }
+    }
 
 }
