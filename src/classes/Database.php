@@ -10,6 +10,7 @@ class Database
     private PDO $pdo;
     private string $table;
     private array $queryConditions = [];
+    private array $rawConditions = [];
     private ?int $limit = null;
     private ?int $offset = null;
     private array $orderByConditions = [];
@@ -128,9 +129,21 @@ class Database
         }
         $fields = implode(", ", $fields);
         $sql = "SELECT $fields FROM {$this->table}";
-
+        $conditions = [];
         if ($this->queryConditions) {
-            $sql .= " WHERE " . implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
+            $conditions[] = implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
+        }
+        if ($this->rawConditions) {
+            $conditions[] = implode(" AND ", $this->rawConditions);
+        }
+        if ($conditions) {
+            $sql .= " WHERE " . implode(" AND ", $conditions);
+        }
+        if ($this->limit) {
+            $sql .= " LIMIT " . $this->limit;
+        }
+        if ($this->offset) {
+            $sql .= " OFFSET " . $this->offset;
         }
 
         if ($this->orderByConditions) {
@@ -283,5 +296,36 @@ class Database
             $this->pdo->exec("DROP TABLE IF EXISTS `$table`");
         }
     }
+
+    public function random(array $fields = [], int $count = 1): null|string|array
+    {
+        $sql = $this->buildQuery($fields) . " ORDER BY RAND() LIMIT $count";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->queryConditions);
+
+        if($count === 1) {
+            return danupe()->data()->get($stmt->fetch(),'text');
+        }else{
+            return $stmt->fetchAll();
+        }
+    }
+
+
+    public function whereRaw(string $sql, array $params = []): static
+    {
+        $this->rawConditions[] = $sql;
+
+        if($params){
+            $this->queryConditions = array_merge($this->queryConditions, $params);
+            dd($this->toSql());
+        }
+
+
+
+        return $this;
+    }
+
+
+
 
 }

@@ -80,9 +80,13 @@ abstract class Model
         return $data;
     }
 
-    public function first($id)
+    public function first($id=null)
     {
-        $data = $this->database->where([$this->primaryKey, $id])->first();
+        if($id != null){
+            $data = $this->database->where([$this->primaryKey, $id])->first();
+        }else{
+            $data = $this->database->first();
+        }
         if ($data) {
             return $data;
         } else {
@@ -90,13 +94,13 @@ abstract class Model
         }
     }
 
-    public function get($id)
+    public function get()
     {
-        $data = $this->database->where([$this->primaryKey, $id])->first();
+        $data = $this->database->get();
         if ($data) {
             return $data;
         } else {
-            throw new \Exception("Record not found");
+            return [];
         }
     }
     public function getAll()
@@ -107,6 +111,24 @@ abstract class Model
     public function orderBy(array $orderBy = [])
     {
         $this->database->orderBy($orderBy);
+        return $this;
+    }
+
+    public function where(array $conditions = [])
+    {
+        $this->database->where($conditions);
+        return $this;
+    }
+
+    public function whereRaw(string $sql, array $params = [])
+    {
+        $this->database->whereRaw($sql, $params);
+        return $this;
+    }
+
+    public function random(array $fields = [])
+    {
+        $this->database->random($fields);
         return $this;
     }
 }
