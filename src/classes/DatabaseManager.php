@@ -44,7 +44,6 @@ class DatabaseManager
             $this->db->raw("DROP DATABASE IF EXISTS {$this->db->getDatabaseName()}");
             $this->db->raw("CREATE DATABASE {$this->db->getDatabaseName()}");
 
-            // Neuinitialisierung der Database-Instanz
             $this->db = new Database();
 
             echo "Datenbank wurde geleert.\n";
