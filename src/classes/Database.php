@@ -15,6 +15,8 @@ class Database
     private ?int $offset = null;
     private array $orderByConditions = [];
 
+    public string $databaseName = '';
+
     public function __construct(string $table = '')
     {
         if ($table) {
@@ -22,6 +24,7 @@ class Database
         }
         $type = danupe()->config()->get('plugin-database.type', 'mysql');
         $config = danupe()->config()->get("plugin-database.$type");
+        $this->databaseName = $config['database'];
         $dsn = "{$type}:host={$config['host']};dbname={$config['database']};charset=utf8mb4";
         $this->pdo = new PDO($dsn, $config['username'], $config['password'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -317,12 +320,16 @@ class Database
 
         if($params){
             $this->queryConditions = array_merge($this->queryConditions, $params);
-            dd($this->toSql());
         }
 
 
 
         return $this;
+    }
+
+    public function getDatabaseName(): string
+    {
+        return $this->databaseName;
     }
 
 

@@ -3,7 +3,6 @@
 namespace Danupe\Plugin\Database\Classes;
 
 use Danupe\Core\Classes\File;
-use Danupe\Core\Classes\Path;
 use Danupe\Plugin\Database\Classes\Database;
 
 class DatabaseManager
@@ -15,8 +14,6 @@ class DatabaseManager
     public function __construct()
     {
         $this->db = new Database();
-        $this->ensureMigrationsTable();
-        $this->ensureSeedsTable();
     }
 
     private function ensureMigrationsTable(): void
@@ -40,9 +37,23 @@ class DatabaseManager
         $this->db->table($this->seedsTable)->raw($sql);
     }
 
-    public function migrate(): void
+    public function migrate(bool $clearDatabase = false): void
     {
+        if ($clearDatabase) {
+            echo "Leere die Datenbank...\n";
+            $this->db->raw("DROP DATABASE IF EXISTS {$this->db->getDatabaseName()}");
+            $this->db->raw("CREATE DATABASE {$this->db->getDatabaseName()}");
+
+            // Neuinitialisierung der Database-Instanz
+            $this->db = new Database();
+
+            echo "Datenbank wurde geleert.\n";
+        }
+
+        $this->ensureMigrationsTable();
+        $this->ensureSeedsTable();
         $migrations = $this->getPendingMigrations();
+
         foreach ($migrations as $migration) {
             $functions = File::get($migration);
             $this->db->raw($functions['up']);
@@ -66,7 +77,6 @@ class DatabaseManager
 
     public function rollbackSpecificMigration(string $migration): void
     {
-        // Rückgängig machen einer bestimmten Migration
         $this->rollbackMigration($migration);
     }
 
@@ -99,7 +109,6 @@ class DatabaseManager
 
     public function rollbackSpecificSeed(string $seed): void
     {
-        // Rückgängig machen eines bestimmten Seeds
         $this->rollbackSeed($seed);
     }
 
