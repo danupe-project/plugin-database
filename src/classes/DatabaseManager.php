@@ -4,15 +4,18 @@ namespace Danupe\Plugin\Database\Classes;
 
 use Danupe\Core\Classes\File;
 use Danupe\Plugin\Database\Classes\Database;
+use Danupe\Plugin\Database\Classes\Language;
 
 class DatabaseManager
 {
     public Database $db;
     private string $migrationsTable = 'migrations';
     private string $seedsTable = 'seeds';
+    private Language $language;
 
     public function __construct()
     {
+        $this->language = new Language();
         $this->db = new Database();
     }
 
@@ -40,13 +43,13 @@ class DatabaseManager
     public function migrate(bool $clearDatabase = false): void
     {
         if ($clearDatabase) {
-            echo "Leere die Datenbank...\n";
+            echo $this->language->get('database.clearing_database') . "\n";
             $this->db->raw("DROP DATABASE IF EXISTS {$this->db->getDatabaseName()}");
             $this->db->raw("CREATE DATABASE {$this->db->getDatabaseName()}");
 
             $this->db = new Database();
 
-            echo "Datenbank wurde geleert.\n";
+            echo $this->language->get('database.database_cleared') . "\n";
         }
 
         $this->ensureMigrationsTable();
@@ -54,18 +57,29 @@ class DatabaseManager
         $migrations = $this->getPendingMigrations();
 
         foreach ($migrations as $migration) {
+            if ($this->isMigrationApplied($migration)) {
+                echo $this->language->get('database.migration_already_applied', ['migration' => $migration]) . "\n";
+                continue;
+            }
+
             $functions = File::get($migration);
             $this->db->raw($functions['up']);
             $this->logMigration($migration);
-            echo "Migrated: {$migration}\n";
+            echo $this->language->get('database.migrated', ['migration' => $migration]) . "\n";
         }
+    }
+
+    private function isMigrationApplied(string $migration): bool
+    {
+        $appliedMigrations = $this->db->table($this->migrationsTable)->where(['migration' => $migration])->first();
+        return !empty($appliedMigrations);
     }
 
     public function rollback(): void
     {
         $batch = $this->getLastBatch();
         if ($batch === 0) {
-            echo "Keine Migrationen zum Zurücksetzen gefunden.\n";
+            echo $this->language->get('database.no_migrations') . "\n";
             return;
         }
         $migrations = $this->getMigrationsByBatch($batch);
@@ -92,18 +106,29 @@ class DatabaseManager
         $functions = File::get($migration);
         $this->db->raw($functions['down']);
         $this->removeMigration($migration);
-        echo "Rolled back: {$migration}\n";
+        echo $this->language->get('database.rolled_back', ['migration' => $migration]) . "\n";
     }
 
     public function seed(): void
     {
         $seeds = $this->getPendingSeeds();
         foreach ($seeds as $seed) {
+            if ($this->isSeedApplied($seed)) {
+                echo $this->language->get('database.seed_already_applied', ['seed' => $seed]) . "\n";
+                continue;
+            }
+
             $functions = File::get($seed);
             $this->db->raw($functions['up']);
             $this->logSeed($seed);
-            echo "Seeded: {$seed}\n";
+            echo $this->language->get('database.seeded', ['seed' => $seed]) . "\n";
         }
+    }
+
+    private function isSeedApplied(string $seed): bool
+    {
+        $appliedSeeds = $this->db->table($this->seedsTable)->where(['seed' => $seed])->first();
+        return !empty($appliedSeeds);
     }
 
     public function rollbackSpecificSeed(string $seed): void
@@ -116,7 +141,7 @@ class DatabaseManager
         $functions = File::get($seed);
         $this->db->raw($functions['down']);
         $this->removeSeed($seed);
-        echo "Rolled back seed: {$seed}\n";
+        echo $this->language->get('database.rolled_back_seed', ['seed' => $seed]) . "\n";
     }
 
     private function logMigration(string $migration): void
