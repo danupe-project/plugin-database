@@ -3,8 +3,8 @@
 namespace Danupe\Plugin\Database\Classes;
 
 use Danupe\Core\Classes\File;
+use Danupe\Core\Classes\Language;
 use Danupe\Plugin\Database\Classes\Database;
-use Danupe\Plugin\Database\Classes\Language;
 
 class DatabaseManager
 {
