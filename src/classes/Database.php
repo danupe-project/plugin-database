@@ -2,9 +2,9 @@
 
 namespace Danupe\Plugin\Database\Classes;
 
+use Danupe\Core\Classes\Language;
 use PDO;
 use PDOStatement;
-use Danupe\Plugin\Database\Classes\Language;
 
 class Database
 {
