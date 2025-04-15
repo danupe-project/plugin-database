@@ -4,6 +4,7 @@ namespace Danupe\Plugin\Database\Classes;
 
 use PDO;
 use PDOStatement;
+use Danupe\Plugin\Database\Classes\Language;
 
 class Database
 {
@@ -14,22 +15,31 @@ class Database
     private ?int $limit = null;
     private ?int $offset = null;
     private array $orderByConditions = [];
+    private Language $language;
 
     public string $databaseName = '';
 
-    public function __construct(string $table = '')
+    public function __construct(string $table = '', ?Language $language = null)
     {
+        $this->language = $language ?? new Language();
+
         if ($table) {
             $this->table($table);
         }
-        $type = danupe()->config()->get('plugin-database.type', 'mysql');
-        $config = danupe()->config()->get("plugin-database.$type");
+
+        $config = $this->getDatabaseConfig();
         $this->databaseName = $config['database'];
-        $dsn = "{$type}:host={$config['host']};dbname={$config['database']};charset=utf8mb4";
+        $dsn = "{$config['type']}:host={$config['host']};dbname={$config['database']};charset=utf8mb4";
         $this->pdo = new PDO($dsn, $config['username'], $config['password'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
         ]);
+    }
+
+    private function getDatabaseConfig(): array
+    {
+        $type = danupe()->config()->get('plugin-database.type', 'mysql');
+        return danupe()->config()->get("plugin-database.$type");
     }
 
     public function table(string $table): static
@@ -40,14 +50,20 @@ class Database
 
     public function where(array $conditions): static
     {
-        if (count($conditions) === 1) {
-            $this->queryConditions[key($conditions)] = $conditions[key($conditions)];
-        } elseif (count($conditions) === 2) {
-            $this->queryConditions[$conditions[0]] = $conditions[1];
-        } elseif (count($conditions) === 3) {
-            $this->queryConditions[$conditions[0]] = $conditions[2];
+        $count = count($conditions);
+
+        if ($count === 1) {
+            $this->queryConditions[key($conditions)] = current($conditions);
+        } elseif ($count === 2) {
+            [$column, $value] = $conditions;
+            $this->queryConditions[$column] = $value;
+        } elseif ($count === 3) {
+            [$column, , $value] = $conditions;
+            $this->queryConditions[$column] = $value;
         } else {
-            throw new \InvalidArgumentException('Invalid number of arguments for where clause.');
+            throw new \InvalidArgumentException(
+                $this->language->get('database.errors.invalid_where_clause')
+            );
         }
 
         return $this;
@@ -70,31 +86,24 @@ class Database
         foreach ($conditions as $column => $direction) {
             $direction = strtoupper($direction);
             if (!in_array($direction, ['ASC', 'DESC'])) {
-                throw new \InvalidArgumentException("Invalid sort direction for column '$column'. Use 'ASC' or 'DESC'.");
+                throw new \InvalidArgumentException(
+                    $this->language->get('database.errors.invalid_sort_direction', ['column' => $column])
+                );
             }
             $this->orderByConditions[] = "$column $direction";
         }
         return $this;
     }
 
-    public function all(array $fields=[]): array
+    public function all(array $fields = []): array
     {
-        $sql = $this->buildQuery($fields);
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->queryConditions);
-
-        return $stmt->fetchAll();
+        return $this->executeQuery($this->buildQuery($fields))->fetchAll();
     }
 
-    public function first(array $fields=[]): ?array
+    public function first(array $fields = []): ?array
     {
-        $sql = $this->buildQuery($fields) . " LIMIT 1";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->queryConditions);
-
-        $result = $stmt->fetch();
-
-        return $result === false ? null : $result;  // Gibt null zurück, wenn kein Ergebnis gefunden wurde
+        $result = $this->executeQuery($this->buildQuery($fields) . " LIMIT 1")->fetch();
+        return $result ?: null;
     }
 
     public function last(): ?array
@@ -105,48 +114,29 @@ class Database
 
         $result = $stmt->fetch();
 
-        return $result === false ? null : $result;  // Gibt null zurück, wenn kein Ergebnis gefunden wurde
+        return $result === false ? null : $result;
     }
 
     public function get(): array
     {
         $sql = $this->buildQuery();
         if ($this->limit) {
-            $sql .= " LIMIT " . $this->limit;
+            $sql .= " LIMIT {$this->limit}";
         }
-
         if ($this->offset) {
-            $sql .= " OFFSET " . $this->offset;
+            $sql .= " OFFSET {$this->offset}";
         }
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->queryConditions);
-
-        return $stmt->fetchAll();
+        return $this->executeQuery($sql)->fetchAll();
     }
 
-    private function buildQuery(array $fields=[]): string
+    private function buildQuery(array $fields = []): string
     {
-        if(empty($fields)) {
-            $fields = ['*'];
-        }
-        $fields = implode(", ", $fields);
+        $fields = empty($fields) ? '*' : implode(", ", $fields);
         $sql = "SELECT $fields FROM {$this->table}";
-        $conditions = [];
-        if ($this->queryConditions) {
-            $conditions[] = implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
-        }
-        if ($this->rawConditions) {
-            $conditions[] = implode(" AND ", $this->rawConditions);
-        }
+
+        $conditions = $this->buildConditions();
         if ($conditions) {
-            $sql .= " WHERE " . implode(" AND ", $conditions);
-        }
-        if ($this->limit) {
-            $sql .= " LIMIT " . $this->limit;
-        }
-        if ($this->offset) {
-            $sql .= " OFFSET " . $this->offset;
+            $sql .= " WHERE $conditions";
         }
 
         if ($this->orderByConditions) {
@@ -154,6 +144,25 @@ class Database
         }
 
         return $sql;
+    }
+
+    private function buildConditions(): string
+    {
+        $conditions = [];
+        if ($this->queryConditions) {
+            $conditions[] = implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
+        }
+        if ($this->rawConditions) {
+            $conditions[] = implode(" AND ", $this->rawConditions);
+        }
+        return implode(" AND ", $conditions);
+    }
+
+    private function executeQuery(string $sql): PDOStatement
+    {
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->queryConditions);
+        return $stmt;
     }
 
     public function create(array $data): bool
