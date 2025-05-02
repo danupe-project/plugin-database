@@ -15,8 +15,8 @@ class DatabaseTest extends TestCase
     {
         parent::setUp();
 
-        $type = config('plugin-database.type', 'mysql');
-        $config = config("plugin-database.$type");
+        $type = danupe()->config()->get('plugin-database.type', 'mysql');
+        $config = danupe()->config()->get("plugin-database.$type");
         $this->pdo = new PDO("mysql:host=" . $config['host'] . ";dbname=" . $config['database'] . ";charset=utf8mb4", $config['username'], $config['password']);
         $this->pdo->exec('CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -24,14 +24,15 @@ class DatabaseTest extends TestCase
         )');
 
         $this->database = new Database();
+        dd($this->database);
     }
 
     protected function tearDown(): void
     {
         parent::tearDown();
 
-        $type = config('plugin-database.type', 'mysql');
-        $config = config("plugin-database.$type");
+        $type = danupe()->config()->get('plugin-database.type', 'mysql');
+        $config = danupe()->config()->get("plugin-database.$type");
         $pdo = new PDO("mysql:host=" . $config['host'] . ";dbname=" . $config['database'] . ";charset=utf8mb4", $config['username'], $config['password']);
         $pdo->exec('DROP TABLE IF EXISTS users');
     }
