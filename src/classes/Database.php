@@ -10,8 +10,9 @@ class Database
 {
     private PDO $pdo;
     private string $table;
-    private array $queryConditions = [];
-    private array $rawConditions = [];
+    private array $queryConditions = []; // key => value for simple where
+    private array $rawConditions = [];   // raw SQL condition strings
+    private array $rawParams = [];       // named parameters for rawConditions
     private ?int $limit = null;
     private ?int $offset = null;
     private array $orderByConditions = [];
@@ -53,9 +54,10 @@ class Database
     {
         $this->queryConditions = [];
         $this->rawConditions = [];
-        $this->limit = null;
-        $this->offset = null;
-        $this->orderByConditions = [];
+    $this->limit = null;
+    $this->offset = null;
+    $this->orderByConditions = [];
+    $this->rawParams = [];
     }
 
     public function where(array $conditions): static
@@ -100,7 +102,7 @@ class Database
                     $this->language->get('database.errors.invalid_sort_direction', ['column' => $column])
                 );
             }
-            $this->orderByConditions[] = "$column $direction";
+            $this->orderByConditions[] = $this->quoteIdentifier($column) . " $direction";
         }
         return $this;
     }
@@ -160,7 +162,7 @@ class Database
     {
         $conditions = [];
         if ($this->queryConditions) {
-            $conditions[] = implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
+            $conditions[] = implode(" AND ", array_map(fn($key) => $this->quoteIdentifier($key) . " = :$key", array_keys($this->queryConditions)));
         }
         if ($this->rawConditions) {
             $conditions[] = implode(" AND ", $this->rawConditions);
@@ -171,7 +173,8 @@ class Database
     private function executeQuery(string $sql): PDOStatement
     {
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->queryConditions);
+        $params = array_merge($this->queryConditions, $this->rawParams);
+        $stmt->execute($params);
         return $stmt;
     }
 
@@ -292,13 +295,19 @@ class Database
     public function count(): int
     {
         $sql = "SELECT COUNT(*) FROM {$this->table}";
+        $parts = [];
         if ($this->queryConditions) {
-            $sql .= " WHERE " . implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($this->queryConditions)));
+            $parts[] = implode(" AND ", array_map(fn($key) => $this->quoteIdentifier($key) . " = :$key", array_keys($this->queryConditions)));
         }
-
+        if ($this->rawConditions) {
+            $parts[] = implode(' AND ', $this->rawConditions);
+        }
+        if ($parts) {
+            $sql .= ' WHERE ' . implode(' AND ', $parts);
+        }
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->queryConditions);
-
+        $params = array_merge($this->queryConditions, $this->rawParams);
+        $stmt->execute($params);
         return (int)$stmt->fetchColumn();
     }
 
@@ -336,13 +345,9 @@ class Database
     public function whereRaw(string $sql, array $params = []): static
     {
         $this->rawConditions[] = $sql;
-
-        if($params){
-            $this->queryConditions = array_merge($this->queryConditions, $params);
+        if ($params) {
+            $this->rawParams = array_merge($this->rawParams, $params);
         }
-
-
-
         return $this;
     }
 
@@ -351,6 +356,14 @@ class Database
         return $this->databaseName;
     }
 
+    private function quoteIdentifier(string $identifier): string
+    {
+        // very basic whitelist: allow letters, numbers, underscore
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $identifier)) {
+            throw new \InvalidArgumentException('Invalid identifier: ' . $identifier);
+        }
+        return "`" . $identifier . "`";
+    }
 
 
 
