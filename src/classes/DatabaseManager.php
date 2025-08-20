@@ -27,7 +27,7 @@ class DatabaseManager
             batch INT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )";
-        $this->db->table($this->migrationsTable)->raw($sql);
+        $this->db->raw($sql);
     }
 
     private function ensureSeedsTable(): void
@@ -37,7 +37,7 @@ class DatabaseManager
             seed VARCHAR(255) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )";
-        $this->db->table($this->seedsTable)->raw($sql);
+        $this->db->raw($sql);
     }
 
     public function migrate(bool $clearDatabase = false): void
@@ -167,7 +167,7 @@ class DatabaseManager
 
     private function getPendingSeeds(): array
     {
-        $appliedSeeds = $this->getAppliedMigrations($this->seedsTable);
+        $appliedSeeds = $this->getAppliedSeeds($this->seedsTable);
         return $this->getPendingFiles('seeds', $appliedSeeds);
     }
 
@@ -175,6 +175,12 @@ class DatabaseManager
     {
         $applied = $this->db->table($table)->all();
         return array_column($applied, 'migration');
+    }
+
+    private function getAppliedSeeds(string $table): array
+    {
+        $applied = $this->db->table($table)->all();
+        return array_column($applied, 'seed');
     }
 
     private function getPendingFiles(string $type, array $applied): array
@@ -191,13 +197,13 @@ class DatabaseManager
 
     private function getLastBatch(): int
     {
-        $last = $this->db->table($this->migrationsTable)->last();
+        $last = $this->db->table($this->migrationsTable)->orderBy(['batch' => 'DESC'])->first();
         return $last['batch'] ?? 0;  // Wenn $last null ist, wird 0 zurückgegeben
     }
 
     private function getCurrentBatch(): int
     {
-        $batch = $this->db->table($this->migrationsTable)->first();
+        $batch = $this->db->table($this->migrationsTable)->orderBy(['batch' => 'DESC'])->first();
         return $batch['batch'] ?? 0;
     }
 

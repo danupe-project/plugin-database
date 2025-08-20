@@ -41,7 +41,7 @@ class DatabaseTest extends TestCase
             $config['password']
         );
         
-        $this->pdo->exec('CREATE TABLE IF NOT EXISTS users (
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS test_users (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             email VARCHAR(255),
@@ -49,12 +49,12 @@ class DatabaseTest extends TestCase
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )');
 
-        $this->pdo->exec('CREATE TABLE IF NOT EXISTS posts (
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS test_posts (
             id INT AUTO_INCREMENT PRIMARY KEY,
             user_id INT,
             title VARCHAR(255) NOT NULL,
             content TEXT,
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            FOREIGN KEY (user_id) REFERENCES test_users(id)
         )');
 
         // Database class creates its own connection, so we just instantiate it
@@ -72,9 +72,9 @@ class DatabaseTest extends TestCase
 
     private function seedTestData(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         // Clear existing data by recreating table
-        $this->pdo->exec('DELETE FROM users');
+        $this->pdo->exec('DELETE FROM test_users');
         
         foreach ($this->testData as $data) {
             $this->database->create($data);
@@ -92,14 +92,14 @@ class DatabaseTest extends TestCase
             $config['password']
         );
         
-        $pdo->exec('DROP TABLE IF EXISTS posts');
-        $pdo->exec('DROP TABLE IF EXISTS users');
+        $pdo->exec('DROP TABLE IF EXISTS test_posts');
+        $pdo->exec('DROP TABLE IF EXISTS test_users');
     }
 
     /** @covers Database::table */
     public function testTableSetsTableNameAndReturnsInstance(): void
     {
-        $result = $this->database->table('users');
+        $result = $this->database->table('test_users');
         
         $this->assertInstanceOf(Database::class, $result);
         $this->assertSame($this->database, $result);
@@ -108,7 +108,7 @@ class DatabaseTest extends TestCase
     /** @covers Database::all @covers Database::buildQuery @covers Database::executeQuery */
     public function testAllReturnsAllRecords(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->all();
         
         $this->assertCount(3, $result);
@@ -122,7 +122,7 @@ class DatabaseTest extends TestCase
      */
     public function testAllWithSpecificFields(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->all(['name', 'email']);
         
         $this->assertCount(3, $result);
@@ -134,7 +134,7 @@ class DatabaseTest extends TestCase
     /** @covers Database::get @covers Database::buildConditions */
     public function testGetReturnsFilteredData(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->get();
         
         $this->assertIsArray($result);
@@ -147,7 +147,7 @@ class DatabaseTest extends TestCase
      */
     public function testFirstReturnsSingleRecord(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->first();
         
         $this->assertIsArray($result);
@@ -160,8 +160,8 @@ class DatabaseTest extends TestCase
      */
     public function testFirstReturnsNullWhenNoRecords(): void
     {
-        $this->database->table('users');
-        $this->pdo->exec('DELETE FROM users');
+        $this->database->table('test_users');
+        $this->pdo->exec('DELETE FROM test_users');
         $result = $this->database->first();
         
         $this->assertNull($result);
@@ -173,7 +173,7 @@ class DatabaseTest extends TestCase
      */
     public function testLastReturnsLastRecord(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->last();
         
         $this->assertIsArray($result);
@@ -186,7 +186,7 @@ class DatabaseTest extends TestCase
      */
     public function testCreateInsertsNewRecord(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->create(['name' => 'New User', 'email' => 'new@example.com']);
         
         $this->assertTrue($result);
@@ -204,7 +204,7 @@ class DatabaseTest extends TestCase
      */
     public function testUpdateModifiesExistingRecords(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         
         // First verify the record exists
         $originalUser = $this->database->where(['name' => 'John Doe'])->first();
@@ -223,7 +223,7 @@ class DatabaseTest extends TestCase
         $this->database = new Database();
         
         // Check if record was updated by looking for the new name
-        $updatedUser = $this->database->table('users')->where(['id' => $originalUser['id']])->first();
+        $updatedUser = $this->database->table('test_users')->where(['id' => $originalUser['id']])->first();
         $this->assertNotNull($updatedUser);
         $this->assertEquals('Updated Name', $updatedUser['name']);
     }
@@ -234,7 +234,7 @@ class DatabaseTest extends TestCase
      */
     public function testDeleteRemovesRecords(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->delete(['name' => 'John Doe']);
         
         $this->assertTrue($result);
@@ -252,7 +252,7 @@ class DatabaseTest extends TestCase
      */
     public function testWhereAddsConditions(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->where(['name' => 'Jane Smith'])->get();
         
         $this->assertCount(1, $result);
@@ -265,7 +265,7 @@ class DatabaseTest extends TestCase
      */
     public function testWhereWithArrayConditions(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->where(['name', 'Jane Smith'])->get();
         
         $this->assertCount(1, $result);
@@ -278,7 +278,7 @@ class DatabaseTest extends TestCase
      */
     public function testWhereWithThreeParameters(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         // The Database class may not support 3-parameter where clauses
         // Let's test a simple condition instead
         $result = $this->database->where(['age' => 30])->get();
@@ -290,7 +290,7 @@ class DatabaseTest extends TestCase
     /** @covers Database::where */
     public function testWhereThrowsExceptionForInvalidConditions(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         
         // Test that empty conditions work gracefully rather than throwing exceptions
         $result = $this->database->get(); // Get all records without where conditions
@@ -305,7 +305,7 @@ class DatabaseTest extends TestCase
      */
     public function testLimitLimitsResults(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->limit(2)->get();
         
         $this->assertCount(2, $result);
@@ -317,7 +317,7 @@ class DatabaseTest extends TestCase
      */
     public function testOffsetOffsetsResults(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->offset(1)->limit(1)->get();
         
         $this->assertCount(1, $result);
@@ -330,7 +330,7 @@ class DatabaseTest extends TestCase
      */
     public function testOrderByOrdersResults(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->orderBy(['name' => 'DESC'])->get();
         
         $this->assertEquals('John Doe', $result[0]['name']);
@@ -346,7 +346,7 @@ class DatabaseTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         
-        $this->database->table('users');
+        $this->database->table('test_users');
         $this->database->orderBy(['name' => 'INVALID'])->get();
     }
 
@@ -356,7 +356,7 @@ class DatabaseTest extends TestCase
      */
     public function testCountReturnsRecordCount(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $count = $this->database->count();
         
         $this->assertEquals(3, $count);
@@ -369,7 +369,7 @@ class DatabaseTest extends TestCase
      */
     public function testCountWithConditions(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $count = $this->database->where(['age' => 30])->count();
         
         $this->assertEquals(1, $count);
@@ -381,7 +381,7 @@ class DatabaseTest extends TestCase
      */
     public function testExistsReturnsTrueWhenRecordsExist(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $exists = $this->database->where(['name' => 'John Doe'])->exists();
         
         $this->assertTrue($exists);
@@ -393,7 +393,7 @@ class DatabaseTest extends TestCase
      */
     public function testExistsReturnsFalseWhenNoRecordsExist(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $exists = $this->database->where(['name' => 'Non Existent'])->exists();
         
         $this->assertFalse($exists);
@@ -405,7 +405,7 @@ class DatabaseTest extends TestCase
      */
     public function testInsertInsertsData(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->insert(['name' => 'Inserted User', 'email' => 'insert@example.com']);
         
         $this->assertTrue($result);
@@ -421,7 +421,7 @@ class DatabaseTest extends TestCase
      */
     public function testGetLastInsertIdReturnsLastInsertedId(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $this->database->create(['name' => 'Test User', 'email' => 'test@example.com']);
         
         $lastId = $this->database->getLastInsertId();
@@ -436,7 +436,7 @@ class DatabaseTest extends TestCase
      */
     public function testToSqlReturnsSqlString(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $sql = $this->database->where(['name' => 'John Doe'])->toSql();
         
         $this->assertIsString($sql);
@@ -451,7 +451,7 @@ class DatabaseTest extends TestCase
      */
     public function testRawExecutesRawSql(): void
     {
-        $result = $this->database->raw('SELECT COUNT(*) as count FROM users');
+        $result = $this->database->raw('SELECT COUNT(*) as count FROM test_users');
         
         $this->assertNotFalse($result);
         $data = $result->fetch();
@@ -464,7 +464,7 @@ class DatabaseTest extends TestCase
      */
     public function testRawWithParameters(): void
     {
-        $result = $this->database->raw('SELECT * FROM users WHERE name = ?', ['John Doe']);
+        $result = $this->database->raw('SELECT * FROM test_users WHERE name = ?', ['John Doe']);
         
         $this->assertNotFalse($result);
         $data = $result->fetch();
@@ -475,7 +475,7 @@ class DatabaseTest extends TestCase
     public function testWhereRawAddsRawConditions(): void
     {
         // Test raw SQL query directly since whereRaw may not exist
-        $result = $this->database->raw('SELECT * FROM users WHERE name = ?', ['John Doe']);
+        $result = $this->database->raw('SELECT * FROM test_users WHERE name = ?', ['John Doe']);
         
         $this->assertNotFalse($result);
         $data = $result->fetch();
@@ -500,7 +500,7 @@ class DatabaseTest extends TestCase
      */
     public function testRandomReturnsRandomRecord(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->random();
         
         // Random might return null if no records or work differently
@@ -517,7 +517,7 @@ class DatabaseTest extends TestCase
      */
     public function testRandomReturnsMultipleRecords(): void
     {
-        $this->database->table('users');
+        $this->database->table('test_users');
         $result = $this->database->random([], 2);
         
         $this->assertIsArray($result);
@@ -547,15 +547,15 @@ class DatabaseTest extends TestCase
     public function testHasManyReturnsRelatedRecords(): void
     {
         // First create a user
-        $this->database->table('users');
+        $this->database->table('test_users');
         $this->database->create(['name' => 'User With Posts', 'email' => 'user@example.com']);
         $userId = $this->database->getLastInsertId();
 
         // Create posts for this user
-        $this->pdo->exec("INSERT INTO posts (user_id, title, content) VALUES ($userId, 'Post 1', 'Content 1')");
-        $this->pdo->exec("INSERT INTO posts (user_id, title, content) VALUES ($userId, 'Post 2', 'Content 2')");
+        $this->pdo->exec("INSERT INTO test_posts (user_id, title, content) VALUES ($userId, 'Post 1', 'Content 1')");
+        $this->pdo->exec("INSERT INTO test_posts (user_id, title, content) VALUES ($userId, 'Post 2', 'Content 2')");
 
-        $posts = $this->database->hasMany('posts', 'user_id', $userId);
+        $posts = $this->database->hasMany('test_posts', 'user_id', $userId);
         
         $this->assertCount(2, $posts);
         $this->assertEquals('Post 1', $posts[0]['title']);

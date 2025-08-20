@@ -44,8 +44,18 @@ class Database
 
     public function table(string $table): static
     {
+        $this->resetQuery();
         $this->table = $table;
         return $this;
+    }
+
+    private function resetQuery(): void
+    {
+        $this->queryConditions = [];
+        $this->rawConditions = [];
+        $this->limit = null;
+        $this->offset = null;
+        $this->orderByConditions = [];
     }
 
     public function where(array $conditions): static
