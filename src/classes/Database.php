@@ -10,9 +10,11 @@ class Database
 {
     private PDO $pdo;
     private string $table;
-    private array $queryConditions = []; // key => value for simple where
-    private array $rawConditions = [];   // raw SQL condition strings
-    private array $rawParams = [];       // named parameters for rawConditions
+    private array $columns = ['*'];
+    private array $joins = [];
+    private array $queryConditions = []; 
+    private array $rawConditions = [];   
+    private array $rawParams = [];       
     private ?int $limit = null;
     private ?int $offset = null;
     private array $orderByConditions = [];
@@ -54,293 +56,51 @@ class Database
     {
         $this->queryConditions = [];
         $this->rawConditions = [];
-    $this->limit = null;
-    $this->offset = null;
-    $this->orderByConditions = [];
-    $this->rawParams = [];
+        $this->joins = [];
+        $this->columns = ['*'];
+        $this->limit = null;
+        $this->offset = null;
+        $this->orderByConditions = [];
+        $this->rawParams = [];
+    }
+
+    // --- QUERY BUILDER (SELECT & JOIN) ---
+
+    public function select(array $columns): static
+    {
+        $this->columns = $columns;
+        return $this;
+    }
+
+    public function join(string $table, string $first, string $operator, string $second, string $type = 'INNER'): static
+    {
+        $this->joins[] = strtoupper($type) . " JOIN $table ON $first $operator $second";
+        return $this;
+    }
+
+    public function leftJoin(string $table, string $first, string $operator, string $second): static
+    {
+        return $this->join($table, $first, $operator, $second, 'LEFT');
     }
 
     public function where(array $conditions): static
     {
-        $count = count($conditions);
-
-        if ($count === 1) {
-            $this->queryConditions[key($conditions)] = current($conditions);
-        } elseif ($count === 2) {
-            [$column, $value] = $conditions;
-            $this->queryConditions[$column] = $value;
-        } elseif ($count === 3) {
-            [$column, , $value] = $conditions;
-            $this->queryConditions[$column] = $value;
-        } else {
-            throw new \InvalidArgumentException(
-                $this->language->get('database.errors.invalid_where_clause')
-            );
-        }
-
-        return $this;
-    }
-
-    public function limit(int $limit): static
-    {
-        $this->limit = $limit;
-        return $this;
-    }
-
-    public function offset(int $offset): static
-    {
-        $this->offset = $offset;
-        return $this;
-    }
-
-    public function orderBy(array $conditions): static
-    {
-        foreach ($conditions as $column => $direction) {
-            $direction = strtoupper($direction);
-            if (!in_array($direction, ['ASC', 'DESC'])) {
-                throw new \InvalidArgumentException(
-                    $this->language->get('database.errors.invalid_sort_direction', ['column' => $column])
-                );
+        if (array_keys($conditions) !== range(0, count($conditions) - 1)) {
+            foreach ($conditions as $column => $value) {
+                $this->queryConditions[$column] = $value;
             }
-            $this->orderByConditions[] = $this->quoteIdentifier($column) . " $direction";
+        } else {
+            $count = count($conditions);
+            if ($count === 2) {
+                $this->queryConditions[$conditions[0]] = $conditions[1];
+            } elseif ($count === 3) {
+                [$column, $operator, $value] = $conditions;
+                $paramName = str_replace('.', '_', $column) . '_' . count($this->rawParams);
+                $this->whereRaw($this->quoteIdentifier($column) . " $operator :$paramName", [$paramName => $value]);
+            }
         }
         return $this;
     }
-
-    public function all(array $fields = []): array
-    {
-        return $this->executeQuery($this->buildQuery($fields))->fetchAll();
-    }
-
-    public function first(array $fields = []): ?array
-    {
-        $result = $this->executeQuery($this->buildQuery($fields) . " LIMIT 1")->fetch();
-        return $result ?: null;
-    }
-
-    public function last(): ?array
-    {
-        $sql = $this->buildQuery() . " ORDER BY id DESC LIMIT 1";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->queryConditions);
-
-        $result = $stmt->fetch();
-
-        return $result === false ? null : $result;
-    }
-
-    public function get(): array
-    {
-        $sql = $this->buildQuery();
-        if ($this->limit) {
-            $sql .= " LIMIT {$this->limit}";
-        }
-        if ($this->offset) {
-            $sql .= " OFFSET {$this->offset}";
-        }
-        return $this->executeQuery($sql)->fetchAll();
-    }
-
-    private function buildQuery(array $fields = []): string
-    {
-        $fields = empty($fields) ? '*' : implode(", ", $fields);
-        $sql = "SELECT $fields FROM {$this->table}";
-
-        $conditions = $this->buildConditions();
-        if ($conditions) {
-            $sql .= " WHERE $conditions";
-        }
-
-        if ($this->orderByConditions) {
-            $sql .= " ORDER BY " . implode(", ", $this->orderByConditions);
-        }
-
-        return $sql;
-    }
-
-    private function buildConditions(): string
-    {
-        $conditions = [];
-        if ($this->queryConditions) {
-            $conditions[] = implode(" AND ", array_map(fn($key) => $this->quoteIdentifier($key) . " = :$key", array_keys($this->queryConditions)));
-        }
-        if ($this->rawConditions) {
-            $conditions[] = implode(" AND ", $this->rawConditions);
-        }
-        return implode(" AND ", $conditions);
-    }
-
-    private function executeQuery(string $sql): PDOStatement
-    {
-        $stmt = $this->pdo->prepare($sql);
-        $params = array_merge($this->queryConditions, $this->rawParams);
-        $stmt->execute($params);
-        return $stmt;
-    }
-
-    public function create(array $data): bool
-    {
-        $keys = array_keys($data);
-        $sql = "INSERT INTO {$this->table} (" . implode(", ", $keys) . ") VALUES (:" . implode(", :", $keys) . ")";
-        $stmt = $this->pdo->prepare($sql);
-
-        return $stmt->execute($data);
-    }
-
-    public function raw(string $sql, array $params = []): PDOStatement|bool
-    {
-        $stmt = $this->pdo->prepare($sql);
-        $executeResult = $stmt->execute($params);
-
-        return $executeResult ? $stmt : false;
-    }
-
-    public function update(array $data, array $conditions): bool
-    {
-        $set = implode(", ", array_map(fn($key) => "`$key` = :$key", array_keys($data)));
-        $where = implode(" AND ", array_map(fn($key) => "`$key` = :$key", array_keys($conditions)));
-        $sql = "UPDATE `{$this->table}` SET $set WHERE $where";
-
-        $stmt = $this->pdo->prepare($sql);
-        $params = array_merge($data, $conditions);
-        return $stmt->execute($params);
-    }
-
-    public function delete(array $conditions): bool
-    {
-        $where = implode(" AND ", array_map(fn($key) => "$key = :$key", array_keys($conditions)));
-        $sql = "DELETE FROM {$this->table} WHERE $where";
-
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute($conditions);
-    }
-
-    public function hasMany(string $table, string $foreignKey, mixed $id): array
-    {
-        $sql = "SELECT * FROM $table WHERE $foreignKey = :id";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['id' => $id]);
-
-        return $stmt->fetchAll();
-    }
-
-    public function attach(string $pivotTable, array $data): bool
-    {
-        $columns = implode(", ", array_keys($data));
-        $placeholders = implode(", ", array_fill(0, count($data), ":value"));
-        $sql = "INSERT INTO $pivotTable ($columns) VALUES ($placeholders)";
-
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute($data);
-    }
-
-    public function getManyToMany(string $pivotTable, string $foreignKey, mixed $foreignValue, string $relatedTable, string $relatedKey): array
-    {
-        $sql = "SELECT $relatedTable.* FROM $relatedTable 
-                JOIN $pivotTable ON $pivotTable.$relatedKey = $relatedTable.id 
-                WHERE $pivotTable.$foreignKey = :foreignValue";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['foreignValue' => $foreignValue]);
-
-        return $stmt->fetchAll();
-    }
-
-    public function detach(string $pivotTable, array $where): bool
-    {
-        $conditions = implode(" AND ", array_map(fn($col) => "$col = :$col", array_keys($where)));
-        $sql = "DELETE FROM $pivotTable WHERE $conditions";
-
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute($where);
-    }
-
-    public function exists(): bool
-    {
-        $sql = $this->buildQuery() . " LIMIT 1";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->queryConditions);
-
-        return $stmt->fetch() !== false;
-    }
-
-    public function insert(array $data): bool
-    {
-        $columns = implode(", ", array_map(fn($column) => "`$column`", array_keys($data)));
-        $placeholders = implode(", ", array_map(fn($key) => ":$key", array_keys($data)));
-        $sql = "INSERT INTO {$this->table} ($columns) VALUES ($placeholders)";
-        
-        $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute($data);
-    }
-
-    public function toSql(): string
-    {
-        $sql = $this->buildQuery();
-        if ($this->limit) {
-            $sql .= " LIMIT " . $this->limit;
-        }
-
-        if ($this->offset) {
-            $sql .= " OFFSET " . $this->offset;
-        }
-
-        foreach ($this->queryConditions as $key => $value) {
-            $sql = str_replace(":$key", is_string($value) ? "'$value'" : $value, $sql);
-        }
-
-        return $sql;
-    }
-
-    public function count(): int
-    {
-        $sql = "SELECT COUNT(*) FROM {$this->table}";
-        $parts = [];
-        if ($this->queryConditions) {
-            $parts[] = implode(" AND ", array_map(fn($key) => $this->quoteIdentifier($key) . " = :$key", array_keys($this->queryConditions)));
-        }
-        if ($this->rawConditions) {
-            $parts[] = implode(' AND ', $this->rawConditions);
-        }
-        if ($parts) {
-            $sql .= ' WHERE ' . implode(' AND ', $parts);
-        }
-        $stmt = $this->pdo->prepare($sql);
-        $params = array_merge($this->queryConditions, $this->rawParams);
-        $stmt->execute($params);
-        return (int)$stmt->fetchColumn();
-    }
-
-    public function getLastInsertId(): int
-    {
-        return (int)$this->pdo->lastInsertId();
-    }
-
-
-    public function dropAllTables(): void
-    {
-        $sql = "SHOW TABLES";
-        $stmt = $this->pdo->query($sql);
-        $tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-        foreach ($tables as $table) {
-            $this->pdo->exec("DROP TABLE IF EXISTS `$table`");
-        }
-    }
-
-    public function random(array $fields = [], int $count = 1): null|string|array
-    {
-        $sql = $this->buildQuery($fields) . " ORDER BY RAND() LIMIT $count";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->queryConditions);
-
-        if($count === 1) {
-            return danupe()->data()->get($stmt->fetch(),'text');
-        }else{
-            return $stmt->fetchAll();
-        }
-    }
-
 
     public function whereRaw(string $sql, array $params = []): static
     {
@@ -351,20 +111,221 @@ class Database
         return $this;
     }
 
-    public function getDatabaseName(): string
+    // --- FETCH METHODS ---
+
+    public function get(array $fields = []): array
     {
-        return $this->databaseName;
+        $sql = $this->buildQuery($fields);
+        if ($this->limit) $sql .= " LIMIT {$this->limit}";
+        if ($this->offset) $sql .= " OFFSET {$this->offset}";
+        return $this->executeQuery($sql)->fetchAll();
+    }
+
+    public function first(array $fields = []): ?array
+    {
+        $sql = $this->buildQuery($fields) . " LIMIT 1";
+        $result = $this->executeQuery($sql)->fetch();
+        return $result ?: null;
+    }
+
+    public function last(array $fields = []): ?array
+    {
+        $sql = $this->buildQuery($fields) . " ORDER BY id DESC LIMIT 1";
+        $result = $this->executeQuery($sql)->fetch();
+        return $result ?: null;
+    }
+
+    public function all(array $fields = []): array
+    {
+        return $this->get($fields);
+    }
+
+    public function count(): int
+    {
+        $sql = "SELECT COUNT(*) FROM {$this->table}";
+        if (!empty($this->joins)) $sql .= " " . implode(" ", $this->joins);
+        $conditions = $this->buildConditions();
+        if ($conditions) $sql .= " WHERE $conditions";
+        
+        return (int)$this->executeQuery($sql)->fetchColumn();
+    }
+
+    public function exists(): bool
+    {
+        return $this->count() > 0;
+    }
+
+    // --- WRITE METHODS ---
+
+    public function insert(array $data): bool
+    {
+        $columns = implode(", ", array_map(fn($c) => $this->quoteIdentifier($c), array_keys($data)));
+        $placeholders = implode(", ", array_map(fn($k) => ":$k", array_keys($data)));
+        $sql = "INSERT INTO {$this->table} ($columns) VALUES ($placeholders)";
+        return $this->pdo->prepare($sql)->execute($data);
+    }
+
+    public function create(array $data): bool
+    {
+        return $this->insert($data);
+    }
+
+    public function update(array $data, array $conditions): bool
+    {
+        $setParts = [];
+        foreach ($data as $key => $val) $setParts[] = $this->quoteIdentifier($key) . " = :s_$key";
+        
+        $whereParts = [];
+        $whereParams = [];
+        foreach ($conditions as $key => $val) {
+            $safeKey = str_replace('.', '_', $key);
+            $whereParts[] = $this->quoteIdentifier($key) . " = :w_$safeKey";
+            $whereParams["w_$safeKey"] = $val;
+        }
+
+        $sql = "UPDATE {$this->table} SET " . implode(", ", $setParts) . " WHERE " . implode(" AND ", $whereParts);
+        
+        $params = [];
+        foreach ($data as $key => $val) $params["s_$key"] = $val;
+        return $this->pdo->prepare($sql)->execute(array_merge($params, $whereParams));
+    }
+
+    public function delete(array $conditions): bool
+    {
+        $parts = [];
+        $params = [];
+        foreach ($conditions as $key => $val) {
+            $safeKey = str_replace('.', '_', $key);
+            $parts[] = $this->quoteIdentifier($key) . " = :$safeKey";
+            $params[$safeKey] = $val;
+        }
+        $sql = "DELETE FROM {$this->table} WHERE " . implode(" AND ", $parts);
+        return $this->pdo->prepare($sql)->execute($params);
+    }
+
+    // --- RELATIONSHIP METHODS (WICHTIG FÜR SEEDER) ---
+
+    public function hasMany(string $table, string $foreignKey, mixed $id): array
+    {
+        return $this->table($table)->where([$foreignKey => $id])->get();
+    }
+
+    public function attach(string $pivotTable, array $data): bool
+    {
+        $columns = implode(", ", array_map(fn($c) => $this->quoteIdentifier($c), array_keys($data)));
+        $placeholders = implode(", ", array_map(fn($k) => ":$k", array_keys($data)));
+        $sql = "INSERT INTO $pivotTable ($columns) VALUES ($placeholders)";
+        return $this->pdo->prepare($sql)->execute($data);
+    }
+
+    public function detach(string $pivotTable, array $where): bool
+    {
+        $parts = [];
+        foreach ($where as $key => $val) $parts[] = $this->quoteIdentifier($key) . " = :$key";
+        $sql = "DELETE FROM $pivotTable WHERE " . implode(" AND ", $parts);
+        return $this->pdo->prepare($sql)->execute($where);
+    }
+
+    public function getManyToMany(string $pivotTable, string $foreignKey, mixed $foreignValue, string $relatedTable, string $relatedKey): array
+    {
+        $sql = "SELECT r.* FROM {$relatedTable} r 
+                JOIN {$pivotTable} p ON p.{$relatedKey} = r.id 
+                WHERE p.{$foreignKey} = :val";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['val' => $foreignValue]);
+        return $stmt->fetchAll();
+    }
+
+    // --- UTILS & SYSTEM ---
+
+    public function limit(int $limit): static { $this->limit = $limit; return $this; }
+    public function offset(int $offset): static { $this->offset = $offset; return $this; }
+    
+    public function orderBy(array $conditions): static
+    {
+        foreach ($conditions as $col => $dir) {
+            $this->orderByConditions[] = $this->quoteIdentifier($col) . " " . (strtoupper($dir) === 'DESC' ? 'DESC' : 'ASC');
+        }
+        return $this;
+    }
+
+    public function raw(string $sql, array $params = []): PDOStatement|bool
+    {
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute($params) ? $stmt : false;
+    }
+
+    public function dropAllTables(): void
+    {
+        $this->pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
+        $tables = $this->pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($tables as $table) $this->pdo->exec("DROP TABLE IF EXISTS `$table` ");
+        $this->pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+    }
+
+    public function random(array $fields = [], int $count = 1): mixed
+    {
+        $sql = $this->buildQuery($fields) . " ORDER BY RAND() LIMIT $count";
+        $stmt = $this->executeQuery($sql);
+        return ($count === 1) ? $stmt->fetch() : $stmt->fetchAll();
+    }
+
+    public function toSql(): string
+    {
+        $sql = $this->buildQuery();
+        foreach (array_merge($this->queryConditions, $this->rawParams) as $key => $val) {
+            $sql = str_replace(":$key", is_string($val) ? "'$val'" : $val, $sql);
+        }
+        return $sql;
+    }
+
+    private function buildQuery(array $fields = []): string
+    {
+        $fields = (empty($fields) || $fields === ['*']) ? $this->columns : $fields;
+        $fieldStrings = array_map(fn($f) => (strpos(strtoupper($f), ' AS ') !== false) ? $f : $this->quoteIdentifier($f), $fields);
+        
+        $sql = "SELECT " . implode(", ", $fieldStrings) . " FROM {$this->table}";
+        if (!empty($this->joins)) $sql .= " " . implode(" ", $this->joins);
+        $conditions = $this->buildConditions();
+        if ($conditions) $sql .= " WHERE $conditions";
+        if ($this->orderByConditions) $sql .= " ORDER BY " . implode(", ", $this->orderByConditions);
+        
+        return $sql;
+    }
+
+    private function buildConditions(): string
+    {
+        $parts = [];
+        if ($this->queryConditions) {
+            foreach ($this->queryConditions as $key => $value) {
+                $placeholder = str_replace('.', '_', $key);
+                $parts[] = $this->quoteIdentifier($key) . " = :$placeholder";
+            }
+        }
+        if ($this->rawConditions) $parts[] = implode(" AND ", $this->rawConditions);
+        return implode(" AND ", $parts);
+    }
+
+    private function executeQuery(string $sql): PDOStatement
+    {
+        $stmt = $this->pdo->prepare($sql);
+        $mappedParams = [];
+        foreach ($this->queryConditions as $key => $value) {
+            $mappedParams[str_replace('.', '_', $key)] = $value;
+        }
+        $stmt->execute(array_merge($mappedParams, $this->rawParams));
+        return $stmt;
     }
 
     private function quoteIdentifier(string $identifier): string
     {
-        // very basic whitelist: allow letters, numbers, underscore
-        if (!preg_match('/^[A-Za-z0-9_]+$/', $identifier)) {
-            throw new \InvalidArgumentException('Invalid identifier: ' . $identifier);
+        if ($identifier === '*' || strpos($identifier, '(') !== false) return $identifier;
+        if (strpos($identifier, '.') !== false) {
+            return implode('.', array_map([$this, 'quoteIdentifier'], explode('.', $identifier)));
         }
-        return "`" . $identifier . "`";
+        return "`" . str_replace("`", "", $identifier) . "`";
     }
 
-
-
+    public function getLastInsertId(): int { return (int)$this->pdo->lastInsertId(); }
+    public function getDatabaseName(): string { return $this->databaseName; }
 }
